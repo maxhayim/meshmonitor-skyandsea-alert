@@ -11,45 +11,50 @@
 
 **Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **free public data APIs**.
 
+It is designed to run **standalone** or as a **MeshMonitor Auto Responder**, with MeshMonitor handling **Meshtastic, webhooks, routing, and delivery**.
+
 No SDRs.  
 No radios.  
 No hardware required.
-
-This project is intentionally **KISS**.
 
 ---
 
 ## This repository contains
 
-- `sky_and_sea_alert.py` — the runtime Python script
-- `README.md` — setup and usage instructions
+- `sky_and_sea_alert.py` — runtime Python script
+- `README.md` — documentation
 
 ---
 
 ## What this does
 
-Sky and Sea Alert monitors activity around your location and prints human-readable alerts with emojis.
+Sky and Sea Alert detects nearby aircraft and vessels and emits **compact, emoji-based alerts**.
 
-It supports **THREE modes**:
+It supports **FOUR modes** (v1.1.0):
 
 1) **Aircraft only**
-   - Alerts when aircraft pass within a configured radius
-   - Uses ADS-B Exchange (free API key)
+   - ADS-B Exchange
+   - Requires ADSBX API key
 
 2) **Vessels only**
-   - Alerts when vessels pass within a configured radius
-   - Uses AIS Hub (free API key)
+   - AIS Hub
+   - Requires AIS Hub API key
 
 3) **Sky + Sea**
-   - Aircraft **and** vessel alerts together
-   - Independent alert logic with shared deduplication
+   - Aircraft and vessels together
+
+4) **Demo mode**
+   - No API keys
+   - Sample alerts
+   - Single-shot (no loop)
 
 Design goals:
 
 - KISS configuration (lat / lon + radius)
-- Emoji-based alerts that are easy to read
-- Status messages so you always know what the script is doing
-- No scraping, no shared API keys, no ToS violations
+- Clean, radio-friendly output
+- Built-in deduplication (no spam)
+- MeshMonitor-first integration
+- Clear status messaging
 
 ---
 
@@ -67,7 +72,7 @@ Design goals:
 
     sky_and_sea_alert.py
 
-This is the only file you need to run.
+This is the only file you run or install in MeshMonitor.
 
 ---
 
@@ -75,34 +80,31 @@ This is the only file you need to run.
 
 - Python 3.8+
 - Internet connection
-- Free API keys (see below)
+- Free API keys (except demo mode)
 
-No Docker.  
-No pip installs required beyond `requests`.
-
----
-
-## Setup — REQUIRED
-
-### Step 1: Get free API keys
-
-Each user **must use their own API keys**.  
-This is normal, free, and required for reliability.
+No Docker required.  
+No pip installs required beyond `requests` (standard library + urllib is used internally).
 
 ---
 
-### ✈️ Aircraft data — ADS-B Exchange
+## API Keys (Required for live data)
 
-1. Visit: https://www.adsbexchange.com/data/
+Each user **must use their own free API keys**.
+
+---
+
+### ✈️ Aircraft — ADS-B Exchange
+
+1. Visit https://www.adsbexchange.com/data/
 2. Create a free account
 3. Generate an API key
 4. Copy the key
 
 ---
 
-### 🛥️ Vessel data — AIS Hub
+### 🛥️ Vessels — AIS Hub
 
-1. Visit: https://www.aishub.net/
+1. Visit https://www.aishub.net/
 2. Create a free account
 3. Request an API key
 4. Wait for approval (usually quick)
@@ -110,128 +112,179 @@ This is normal, free, and required for reliability.
 
 ---
 
-## Step 2: Configure environment variables
+## Configuration (Environment Variables)
 
-Example (Linux / macOS):
+### Core
 
-    export SSA_MODE=sky_and_sea
-    export SSA_LAT=25.7816
-    export SSA_LON=-80.2220
+    SSA_MODE=sky_and_sea        # aircraft | vessels | sky_and_sea | demo
+    SSA_LAT=25.7816
+    SSA_LON=-80.2220
 
-    export SSA_AIRCRAFT_RADIUS_MI=10
-    export SSA_VESSEL_RADIUS_MI=3
+    SSA_AIRCRAFT_RADIUS_MI=10
+    SSA_VESSEL_RADIUS_MI=3
 
-    export SSA_POLL_INTERVAL=60
-    export SSA_SUPPRESS_MINUTES=15
+    SSA_POLL_INTERVAL=60
+    SSA_SUPPRESS_MINUTES=15
 
-    export ADSBX_API_KEY=your_adsbx_key_here
-    export AISHUB_API_KEY=your_aishub_key_here
-
-### Mode options
-
-    aircraft
-    vessels
-    sky_and_sea
+    ADSBX_API_KEY=your_adsbx_key_here
+    AISHUB_API_KEY=your_aishub_key_here
 
 ---
 
-## Step 3: Run
+## Running Standalone
 
     python sky_and_sea_alert.py
 
+Standalone mode:
+- Prints status and alerts to console
+- Optional MQTT output (see below)
+- Continuous polling unless in demo mode
+
 ---
 
-## Example alerts
+## Demo Mode (No Keys)
+
+Demo mode verifies installation and output formatting.
+
+    export SSA_MODE=demo
+    python sky_and_sea_alert.py
+
+Behavior:
+- No API calls
+- Sample ✈️ and 🛥️ alerts
+- Exits immediately
+
+---
+
+## MeshMonitor Auto Responder Integration (v1.1.0)
+
+Sky and Sea Alert is fully compatible with **MeshMonitor Auto Responder scripting**.
+
+### Script Metadata (mm_meta)
+
+The script includes `mm_meta` in the first 1 KB for clean UI display:
+
+- Name
+- Emoji
+- Language
+
+Reference:  
+https://meshmonitor.org/developers/auto-responder-scripting.html#script-metadata-mm-meta
+
+---
+
+### Installing into MeshMonitor
+
+Copy the script into the container:
+
+    /data/scripts/sky_and_sea_alert.py
+
+Make it executable:
+
+    chmod +x /data/scripts/sky_and_sea_alert.py
+
+---
+
+### MeshMonitor Commands
+
+Sky and Sea Alert responds to the following triggers:
+
+    !ssa
+    !ssa sky
+    !ssa sea
+    !ssa demo
+    !ssa help
+
+Behavior:
+- Single-shot execution
+- Outputs valid JSON:
+  
+      { "response": "✈️ AAL123 6.1mi 9200ft" }
+
+MeshMonitor handles:
+- Meshtastic delivery
+- Webhooks
+- Routing
+- Channels
+- Retries
+
+The script **does not transmit on radios directly**.
+
+---
+
+## Example Alerts
 
 Aircraft:
 
-    ✈️ Aircraft overhead
-    Callsign: AAL123
-    Altitude: 9200 ft
-    Distance: 6.1 mi
+    ✈️ AAL123 6.1mi 9200ft
 
 Vessel:
 
-    🚢 Vessel nearby
-    Name: MSC Aurora
-    Speed: 12.4 kn
-    Distance: 2.3 mi
+    🚢 MSC Aurora 2.3mi 12.4kn
 
----
+Idle:
 
-## Status messages
-
-Sky and Sea Alert prints status messages so you always know what’s happening:
-
-- Startup confirmation
-- Active mode
-- Missing API keys
-- API errors (non-fatal)
-- Idle checks when nothing is nearby
-
-Examples:
-
-    🟢 Sky and Sea Alert started
-    🔄 Checking sky and sea traffic…
     ⏸ No aircraft or vessels in range
-    🔑 API key missing
 
 ---
 
-## Deduplication (no spam)
+## Deduplication (No Spam)
 
 - Alerts are fingerprinted per aircraft or vessel
-- Repeat alerts are suppressed for a configurable time window
-- Default suppression: 15 minutes
-
-This keeps output clean and useful.
+- Repeats suppressed for `SSA_SUPPRESS_MINUTES`
+- Default: 15 minutes
 
 ---
 
-## Configuration summary
+## MQTT Output (Optional, Standalone Only)
 
-Required:
-- `SSA_LAT`
-- `SSA_LON`
-- `SSA_MODE`
+MQTT is **optional** and **not required** for MeshMonitor or Meshtastic.
 
-Optional:
-- `SSA_AIRCRAFT_RADIUS_MI`
-- `SSA_VESSEL_RADIUS_MI`
-- `SSA_POLL_INTERVAL`
-- `SSA_SUPPRESS_MINUTES`
+Used for:
+- Node-RED
+- Dashboards
+- External automation
 
-Required per mode:
-- Aircraft: `ADSBX_API_KEY`
-- Vessels: `AISHUB_API_KEY`
+### MQTT Variables
 
----
+    SSA_MQTT_HOST
+    SSA_MQTT_PORT=1883
+    SSA_MQTT_TOPIC=sky-and-sea-alert/events
+    SSA_MQTT_USERNAME
+    SSA_MQTT_PASSWORD
+    SSA_MQTT_TLS=0
+    SSA_MQTT_ALLOW_IN_MESHMONITOR=0
 
-## Common setup issues
-
-### “Nothing happens”
-
-- Verify latitude / longitude
-- Increase radius
-- Confirm API keys are set
-- Check internet connectivity
-
-### “API key missing”
-
-- Ensure the environment variable is exported
-- Restart your shell/session
-- Keys are required — the script will not guess or share keys
+MQTT uses `mosquitto_pub` if available.
 
 ---
 
-## Roadmap (future)
+## Correct Data Flow
 
-- Demo mode (no keys, sample alerts)
-- Webhook output
-- MeshMonitor Auto Responder integration
-- MQTT / radio output
+### MeshMonitor + Meshtastic (Primary)
 
-These are **not included in v1.0.0**.
+    Sky and Sea Alert
+            ↓
+        MeshMonitor
+            ↓
+        Meshtastic
+            ↓
+        LoRa / Mesh radios
+
+### Standalone (Optional)
+
+    Sky and Sea Alert
+            ↓
+        Console / MQTT
+
+---
+
+## Roadmap
+
+- Enhanced alert classification
+- Persistent state (optional)
+- Additional providers
+- Packaging under MaXHyM-Scripts
 
 ---
 
