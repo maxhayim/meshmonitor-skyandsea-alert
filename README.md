@@ -9,13 +9,69 @@
 
 # ✈️ 🛥️ Sky and Sea Alert
 
-**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **free public data APIs**.
+**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **free, account-based public data APIs**.
 
 It is designed to run **standalone** or as a **MeshMonitor Auto Responder**, with MeshMonitor handling **Meshtastic, webhooks, routing, and delivery**.
 
 No SDRs.  
 No radios.  
 No hardware required.
+
+---
+
+## Quick Start (5-minute setup)
+
+This is the fastest way to verify everything works.
+
+### 1) Clone or download the script
+
+git clone https://github.com/maxhayim/sky-and-sea-alert.git  
+cd sky-and-sea-alert
+
+Or download `sky_and_sea_alert.py` directly.
+
+---
+
+### 2) Run demo mode (no keys required)
+
+export SSA_MODE=demo  
+python sky_and_sea_alert.py
+
+You should immediately see sample ✈️ and 🛥️ alerts.  
+If this works, your environment is ready.
+
+---
+
+### 3) Set your location
+
+export SSA_LAT=25.7816  
+export SSA_LON=-80.2220
+
+---
+
+### 4) Get free API keys (account-based)
+
+These APIs are **free for personal / hobby / open-source use**, but require accounts.
+
+✈️ ADS-B Exchange  
+https://www.adsbexchange.com/data/  
+Create account → generate API key
+
+🛥️ AIS Hub  
+https://www.aishub.net/  
+Create account → request webservice key (approval usually same day)
+
+---
+
+### 5) Run live mode
+
+export SSA_MODE=sky_and_sea  
+export ADSBX_API_KEY=your_adsbx_key_here  
+export AISHUB_API_KEY=your_aishub_key_here  
+
+python sky_and_sea_alert.py
+
+You are now live.
 
 ---
 
@@ -30,7 +86,7 @@ No hardware required.
 
 Sky and Sea Alert detects nearby aircraft and vessels and emits **compact, emoji-based alerts**.
 
-It supports **FOUR modes** (v1.1.0):
+It supports **FOUR modes** (v1.1.0+):
 
 1) **Aircraft only**
    - ADS-B Exchange
@@ -80,7 +136,7 @@ This is the only file you run or install in MeshMonitor.
 
 - Python 3.8+
 - Internet connection
-- Free API keys (except demo mode)
+- Free, account-based API keys (except demo mode)
 
 No Docker required.  
 No pip installs required beyond `requests` (standard library + urllib is used internally).
@@ -91,24 +147,26 @@ No pip installs required beyond `requests` (standard library + urllib is used in
 
 Each user **must use their own free API keys**.
 
+These APIs are free for personal, hobby, and open-source use but are **not anonymous** and are **rate-limited**.
+
 ---
 
 ### ✈️ Aircraft — ADS-B Exchange
 
-1. Visit https://www.adsbexchange.com/data/
-2. Create a free account
-3. Generate an API key
-4. Copy the key
+1. Visit https://www.adsbexchange.com/data/  
+2. Create a free account  
+3. Generate an API key  
+4. Copy the key  
 
 ---
 
 ### 🛥️ Vessels — AIS Hub
 
-1. Visit https://www.aishub.net/
-2. Create a free account
-3. Request an API key
-4. Wait for approval (usually quick)
-5. Copy the key
+1. Visit https://www.aishub.net/  
+2. Create a free account  
+3. Request a webservice API key  
+4. Wait for approval (usually quick)  
+5. Copy the key  
 
 ---
 
@@ -116,38 +174,36 @@ Each user **must use their own free API keys**.
 
 ### Core
 
-    SSA_MODE=sky_and_sea        # aircraft | vessels | sky_and_sea | demo
-    SSA_LAT=25.7816
-    SSA_LON=-80.2220
+SSA_MODE=sky_and_sea        # aircraft | vessels | sky_and_sea | demo  
+SSA_LAT=25.7816  
+SSA_LON=-80.2220  
 
-    SSA_AIRCRAFT_RADIUS_MI=10
-    SSA_VESSEL_RADIUS_MI=3
+SSA_AIRCRAFT_RADIUS_MI=10  
+SSA_VESSEL_RADIUS_MI=3  
 
-    SSA_POLL_INTERVAL=60
-    SSA_SUPPRESS_MINUTES=15
+SSA_POLL_INTERVAL=60  
+SSA_SUPPRESS_MINUTES=15  
 
-    ADSBX_API_KEY=your_adsbx_key_here
-    AISHUB_API_KEY=your_aishub_key_here
+ADSBX_API_KEY=your_adsbx_key_here  
+AISHUB_API_KEY=your_aishub_key_here  
 
 ---
 
 ## Running Standalone
 
-    python sky_and_sea_alert.py
+python sky_and_sea_alert.py
 
 Standalone mode:
 - Prints status and alerts to console
-- Optional MQTT output (see below)
+- Optional MQTT output
 - Continuous polling unless in demo mode
 
 ---
 
 ## Demo Mode (No Keys)
 
-Demo mode verifies installation and output formatting.
-
-    export SSA_MODE=demo
-    python sky_and_sea_alert.py
+export SSA_MODE=demo  
+python sky_and_sea_alert.py
 
 Behavior:
 - No API calls
@@ -156,17 +212,13 @@ Behavior:
 
 ---
 
-## MeshMonitor Auto Responder Integration (v1.1.0)
+## MeshMonitor Auto Responder Integration
 
 Sky and Sea Alert is fully compatible with **MeshMonitor Auto Responder scripting**.
 
 ### Script Metadata (mm_meta)
 
-The script includes `mm_meta` in the first 1 KB for clean UI display:
-
-- Name
-- Emoji
-- Language
+The script includes `mm_meta` in the first 1 KB for clean UI display.
 
 Reference:  
 https://meshmonitor.org/developers/auto-responder-scripting.html#script-metadata-mm-meta
@@ -175,31 +227,22 @@ https://meshmonitor.org/developers/auto-responder-scripting.html#script-metadata
 
 ### Installing into MeshMonitor
 
-Copy the script into the container:
-
-    /data/scripts/sky_and_sea_alert.py
-
-Make it executable:
-
-    chmod +x /data/scripts/sky_and_sea_alert.py
+/data/scripts/sky_and_sea_alert.py  
+chmod +x /data/scripts/sky_and_sea_alert.py
 
 ---
 
 ### MeshMonitor Commands
 
-Sky and Sea Alert responds to the following triggers:
+!ssa  
+!ssa sky  
+!ssa sea  
+!ssa demo  
+!ssa help  
 
-    !ssa
-    !ssa sky
-    !ssa sea
-    !ssa demo
-    !ssa help
+Outputs valid JSON:
 
-Behavior:
-- Single-shot execution
-- Outputs valid JSON:
-  
-      { "response": "✈️ AAL123 6.1mi 9200ft" }
+{ "response": "✈️ AAL123 6.1mi 9200ft" }
 
 MeshMonitor handles:
 - Meshtastic delivery
@@ -216,15 +259,15 @@ The script **does not transmit on radios directly**.
 
 Aircraft:
 
-    ✈️ AAL123 6.1mi 9200ft
+✈️ AAL123 6.1mi 9200ft
 
 Vessel:
 
-    🚢 MSC Aurora 2.3mi 12.4kn
+🚢 MSC Aurora 2.3mi 12.4kn
 
 Idle:
 
-    ⏸ No aircraft or vessels in range
+⏸ No aircraft or vessels in range
 
 ---
 
@@ -247,15 +290,13 @@ Used for:
 
 ### MQTT Variables
 
-    SSA_MQTT_HOST
-    SSA_MQTT_PORT=1883
-    SSA_MQTT_TOPIC=sky-and-sea-alert/events
-    SSA_MQTT_USERNAME
-    SSA_MQTT_PASSWORD
-    SSA_MQTT_TLS=0
-    SSA_MQTT_ALLOW_IN_MESHMONITOR=0
-
-MQTT uses `mosquitto_pub` if available.
+SSA_MQTT_HOST  
+SSA_MQTT_PORT=1883  
+SSA_MQTT_TOPIC=sky-and-sea-alert/events  
+SSA_MQTT_USERNAME  
+SSA_MQTT_PASSWORD  
+SSA_MQTT_TLS=0  
+SSA_MQTT_ALLOW_IN_MESHMONITOR=0  
 
 ---
 
@@ -263,19 +304,19 @@ MQTT uses `mosquitto_pub` if available.
 
 ### MeshMonitor + Meshtastic (Primary)
 
-    Sky and Sea Alert
-            ↓
-        MeshMonitor
-            ↓
-        Meshtastic
-            ↓
-        LoRa / Mesh radios
+Sky and Sea Alert  
+        ↓  
+    MeshMonitor  
+        ↓  
+    Meshtastic  
+        ↓  
+    LoRa / Mesh radios  
 
 ### Standalone (Optional)
 
-    Sky and Sea Alert
-            ↓
-        Console / MQTT
+Sky and Sea Alert  
+        ↓  
+    Console / MQTT  
 
 ---
 
