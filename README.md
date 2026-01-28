@@ -9,21 +9,32 @@
 
 # ✈️ 🛥️ Sky and Sea Alert
 
-**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **free, account-based public data APIs**.
+**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **your own locally collected data** or **official cloud APIs**.
 
-It is designed to run **standalone** or as a **MeshMonitor Auto Responder**, with MeshMonitor handling **Meshtastic, webhooks, routing, and delivery**.
+MeshMonitor handles **Meshtastic, webhooks, routing, and delivery**.  
+Sky and Sea Alert focuses purely on **detection, filtering, and alert formatting**.
 
-No SDRs.  
-No radios.  
-No hardware required.
+No scraping.  
+No shared API keys.  
+No direct radio transmission.
+
+---
+
+## 🚨 Major Release Notice (v2.0.0)
+
+Sky and Sea Alert v2.0.0 introduces a **breaking architectural change**:
+
+- ❌ No longer positioned as “free cloud API” software  
+- ✅ Local receivers are now the **primary and recommended data source**  
+- ✅ Cloud APIs are **explicitly optional and clearly labeled (paid / rate-limited)**  
+
+This change removes API shutdown risk, ToS ambiguity, and onboarding confusion.
 
 ---
 
 ## Quick Start (5-minute setup)
 
-This is the fastest way to verify everything works.
-
-### 1) Clone or download the script
+### 1) Clone or download
 
 git clone https://github.com/maxhayim/sky-and-sea-alert.git  
 cd sky-and-sea-alert
@@ -32,13 +43,13 @@ Or download `sky_and_sea_alert.py` directly.
 
 ---
 
-### 2) Run demo mode (no keys required)
+### 2) Run demo mode (no hardware, no APIs)
 
 export SSA_MODE=demo  
 python sky_and_sea_alert.py
 
 You should immediately see sample ✈️ and 🛥️ alerts.  
-If this works, your environment is ready.
+This verifies your environment and MeshMonitor formatting.
 
 ---
 
@@ -49,68 +60,115 @@ export SSA_LON=-80.2220
 
 ---
 
-### 4) Get free API keys (account-based)
+### 4) Choose your data source (recommended paths below)
 
-These APIs are **free for personal / hobby / open-source use**, but require accounts.
-
-✈️ ADS-B Exchange  
-https://www.adsbexchange.com/data/  
-Create account → generate API key
-
-🛥️ AIS Hub  
-https://www.aishub.net/  
-Create account → request webservice key (approval usually same day)
+- **Free & unlimited** → Local receivers (ADS-B + AIS)
+- **Convenience** → Paid / account-based cloud APIs
 
 ---
 
-### 5) Run live mode
+## Supported Data Sources (v2.0.0)
 
-export SSA_MODE=sky_and_sea  
-export ADSBX_API_KEY=your_adsbx_key_here  
-export AISHUB_API_KEY=your_aishub_key_here  
+### ✈️ Aircraft (ADS-B)
 
-python sky_and_sea_alert.py
+#### ✅ Recommended: Local ADS-B Receiver (FREE)
 
-You are now live.
+- Hardware: RTL-SDR + ADS-B antenna
+- Software:
+  - dump1090
+  - readsb
+- Output: local JSON over HTTP
+
+Flow:
+ADS-B receiver → dump1090/readsb → Sky and Sea Alert → MeshMonitor → Meshtastic
+
+No API keys.  
+No rate limits.  
+Real-time data.
 
 ---
 
-## This repository contains
+#### 🌍 Remote Access (NEW)
 
-- `sky_and_sea_alert.py` — runtime Python script
-- `README.md` — documentation
+Local receivers can be accessed securely over the internet using a VPN.
+
+**Recommended VPN:** Tailscale
+
+- No port forwarding
+- Encrypted
+- Works behind NAT / CGNAT
+- Ideal for Raspberry Pi deployments
+
+Example:
+Remote Pi (ADS-B) → Tailscale → Sky and Sea Alert → MeshMonitor
 
 ---
 
-## What this does
+#### 💲 Optional: ADS-B Exchange (Paid, Cloud)
 
-Sky and Sea Alert detects nearby aircraft and vessels and emits **compact, emoji-based alerts**.
+ADS-B Exchange no longer provides free API access.
 
-It supports **FOUR modes** (v1.1.0+):
+**Official low-cost option:**  
+https://www.adsbexchange.com/api-lite/
 
-1) **Aircraft only**
-   - ADS-B Exchange
-   - Requires ADSBX API key
+**RapidAPI listing:**  
+https://rapidapi.com/adsbx/api/adsbexchange-com1
 
-2) **Vessels only**
-   - AIS Hub
-   - Requires AIS Hub API key
+##### How to get access
+1) Create a RapidAPI account  
+2) Open the ADS-B Exchange API listing  
+3) Choose a pricing plan  
+4) Copy your **X-RapidAPI-Key**
 
-3) **Sky + Sea**
-   - Aircraft and vessels together
+##### Environment variable
+export ADSBX_API_KEY="YOUR_RAPIDAPI_KEY"
 
-4) **Demo mode**
-   - No API keys
-   - Sample alerts
-   - Single-shot (no loop)
+This option is **paid**, **official**, and **supported**, but not required.
 
-Design goals:
+---
 
-- KISS configuration (lat / lon + radius)
-- Clean, radio-friendly output
-- Built-in deduplication (no spam)
-- MeshMonitor-first integration
-- Clear status messaging
+### 🛥️ Vessels (AIS)
+
+#### ✅ Recommended: Local AIS Receiver (FREE)
+
+- Hardware: RTL-SDR + VHF AIS antenna
+- Software:
+  - AIS-catcher
+  - rtl_ais
+- Output: local JSON or NMEA
+
+Flow:
+AIS receiver → AIS-catcher → Sky and Sea Alert → MeshMonitor → Meshtastic
+
+---
+
+#### 🌐 Optional: AIS Hub (Account-Based)
+
+**AIS Hub API page:**  
+https://www.aishub.net/api
+
+##### How to get access
+1) Create an AIS Hub account  
+2) Visit the API page above  
+3) Use the **AIS API** tab  
+4) Your API “key” is your **AIS Hub username**  
+5) Observe the documented rate limit (≈1 request/minute)
+
+##### Environment variable
+export AISHUB_API_KEY="YOUR_AISHUB_USERNAME"
+
+AIS Hub is free for hobby use but **rate-limited**.
+
+---
+
+## Operating Modes
+
+- demo — sample alerts, no data sources
+- aircraft-local — local ADS-B receiver
+- vessels-local — local AIS receiver
+- sky_and_sea — local ADS-B + local AIS
+- aircraft-cloud — ADS-B Exchange API Lite (paid)
+- vessels-cloud — AIS Hub (account-based)
 
 ---
 
@@ -122,59 +180,21 @@ Design goals:
 
 ---
 
-## IMPORTANT: Which file do I use?
-
-### Use this file
-
-    sky_and_sea_alert.py
-
-This is the only file you run or install in MeshMonitor.
-
----
-
 ## Requirements
 
 - Python 3.8+
-- Internet connection
-- Free, account-based API keys (except demo mode)
+- Internet (optional for local-only mode)
+- SDR hardware (optional, recommended)
 
 No Docker required.  
-No pip installs required beyond `requests` (standard library + urllib is used internally).
-
----
-
-## API Keys (Required for live data)
-
-Each user **must use their own free API keys**.
-
-These APIs are free for personal, hobby, and open-source use but are **not anonymous** and are **rate-limited**.
-
----
-
-### ✈️ Aircraft — ADS-B Exchange
-
-1. Visit https://www.adsbexchange.com/data/  
-2. Create a free account  
-3. Generate an API key  
-4. Copy the key  
-
----
-
-### 🛥️ Vessels — AIS Hub
-
-1. Visit https://www.aishub.net/  
-2. Create a free account  
-3. Request a webservice API key  
-4. Wait for approval (usually quick)  
-5. Copy the key  
+No scraping.  
+No shared credentials.
 
 ---
 
 ## Configuration (Environment Variables)
 
-### Core
-
-SSA_MODE=sky_and_sea        # aircraft | vessels | sky_and_sea | demo  
+SSA_MODE=sky_and_sea  
 SSA_LAT=25.7816  
 SSA_LON=-80.2220  
 
@@ -184,55 +204,17 @@ SSA_VESSEL_RADIUS_MI=3
 SSA_POLL_INTERVAL=60  
 SSA_SUPPRESS_MINUTES=15  
 
-ADSBX_API_KEY=your_adsbx_key_here  
-AISHUB_API_KEY=your_aishub_key_here  
-
----
-
-## Running Standalone
-
-python sky_and_sea_alert.py
-
-Standalone mode:
-- Prints status and alerts to console
-- Optional MQTT output
-- Continuous polling unless in demo mode
-
----
-
-## Demo Mode (No Keys)
-
-export SSA_MODE=demo  
-python sky_and_sea_alert.py
-
-Behavior:
-- No API calls
-- Sample ✈️ and 🛥️ alerts
-- Exits immediately
+Optional (cloud):
+ADSBX_API_KEY=your_rapidapi_key  
+AISHUB_API_KEY=your_aishub_username  
 
 ---
 
 ## MeshMonitor Auto Responder Integration
 
-Sky and Sea Alert is fully compatible with **MeshMonitor Auto Responder scripting**.
+Sky and Sea Alert is fully compatible with MeshMonitor Auto Responder scripting.
 
-### Script Metadata (mm_meta)
-
-The script includes `mm_meta` in the first 1 KB for clean UI display.
-
-Reference:  
-https://meshmonitor.org/developers/auto-responder-scripting.html#script-metadata-mm-meta
-
----
-
-### Installing into MeshMonitor
-
-/data/scripts/sky_and_sea_alert.py  
-chmod +x /data/scripts/sky_and_sea_alert.py
-
----
-
-### MeshMonitor Commands
+### Commands
 
 !ssa  
 !ssa sky  
@@ -240,92 +222,39 @@ chmod +x /data/scripts/sky_and_sea_alert.py
 !ssa demo  
 !ssa help  
 
-Outputs valid JSON:
+### Output
 
 { "response": "✈️ AAL123 6.1mi 9200ft" }
 
 MeshMonitor handles:
-- Meshtastic delivery
+- Meshtastic
 - Webhooks
 - Routing
 - Channels
 - Retries
 
-The script **does not transmit on radios directly**.
+Sky and Sea Alert **never transmits on radios directly**.
 
 ---
 
-## Example Alerts
+## Design Goals (v2.0.0)
 
-Aircraft:
-
-✈️ AAL123 6.1mi 9200ft
-
-Vessel:
-
-🚢 MSC Aurora 2.3mi 12.4kn
-
-Idle:
-
-⏸ No aircraft or vessels in range
-
----
-
-## Deduplication (No Spam)
-
-- Alerts are fingerprinted per aircraft or vessel
-- Repeats suppressed for `SSA_SUPPRESS_MINUTES`
-- Default: 15 minutes
-
----
-
-## MQTT Output (Optional, Standalone Only)
-
-MQTT is **optional** and **not required** for MeshMonitor or Meshtastic.
-
-Used for:
-- Node-RED
-- Dashboards
-- External automation
-
-### MQTT Variables
-
-SSA_MQTT_HOST  
-SSA_MQTT_PORT=1883  
-SSA_MQTT_TOPIC=sky-and-sea-alert/events  
-SSA_MQTT_USERNAME  
-SSA_MQTT_PASSWORD  
-SSA_MQTT_TLS=0  
-SSA_MQTT_ALLOW_IN_MESHMONITOR=0  
-
----
-
-## Correct Data Flow
-
-### MeshMonitor + Meshtastic (Primary)
-
-Sky and Sea Alert  
-        ↓  
-    MeshMonitor  
-        ↓  
-    Meshtastic  
-        ↓  
-    LoRa / Mesh radios  
-
-### Standalone (Optional)
-
-Sky and Sea Alert  
-        ↓  
-    Console / MQTT  
+- Local-first sensing
+- Honest cost model
+- Community-aligned architecture
+- MeshMonitor-first integration
+- Secure remote access
+- Long-term sustainability
 
 ---
 
 ## Roadmap
 
-- Enhanced alert classification
-- Persistent state (optional)
-- Additional providers
-- Packaging under MaXHyM-Scripts
+- Multi-receiver aggregation
+- Receiver health monitoring
+- Coverage overlap detection
+- Community receiver profiles
+- Persistent distributed state
 
 ---
 
