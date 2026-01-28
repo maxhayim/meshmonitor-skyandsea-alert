@@ -1,50 +1,31 @@
+
 #!/usr/bin/env python3
 # mm_meta:
 #   name: ✈️ 🛥️ Sky and Sea Alert
 #   emoji: ✈️
 #   language: Python
 """
-Sky and Sea Alert — v1.2.0
+Sky and Sea Alert — v2.0.0
 
-KISS aircraft + vessel proximity alerts using free, account-based public data APIs.
+Major release: Local-first sensing with optional secure remote access (e.g., Tailscale).
 
-Primary integration: MeshMonitor Auto Responder scripting
-- If running under MeshMonitor (MESSAGE env var is set), the script runs single-shot and prints JSON:
-  {"response":"..."} then exits.
-- MeshMonitor handles Meshtastic/webhooks/routing/delivery. This script does not transmit on radios.
+Sky and Sea Alert generates compact aircraft/vessel proximity alerts for a configured lat/lon using:
+- Local ADS-B receivers (dump1090/readsb) over HTTP JSON (recommended)
+- Local AIS receivers (AIS-catcher / other) over HTTP JSON (recommended)
+- Optional cloud sources:
+  - ADS-B Exchange via RapidAPI (paid)
+  - AIS Hub API (account-based, rate-limited)
+
+MeshMonitor integration:
+- When run by MeshMonitor Auto Responder (MESSAGE env var present), script runs single-shot and prints JSON:
+    {"response":"..."}
+  MeshMonitor handles Meshtastic/webhooks/routing/delivery.
 
 Standalone mode:
-- Polls continuously and prints status + alerts to console.
-- Optional MQTT publish (for non-MeshMonitor ecosystems). MQTT is disabled by default.
+- Polls continuously and prints status/alerts to stdout
+- Optional MQTT publish via mosquitto_pub (disabled by default)
 
-Modes:
-- aircraft       (ADS-B Exchange only, requires ADSBX_API_KEY)
-- vessels        (AIS Hub only, requires AISHUB_API_KEY)
-- sky_and_sea    (both)
-- demo           (no keys, sample alerts; single-shot)
-
-Environment variables (core):
-- SSA_MODE=sky_and_sea|aircraft|vessels|demo
-- SSA_LAT=<float>
-- SSA_LON=<float>
-- SSA_AIRCRAFT_RADIUS_MI=10
-- SSA_VESSEL_RADIUS_MI=3
-- SSA_POLL_INTERVAL=60
-- SSA_SUPPRESS_MINUTES=15
-- ADSBX_API_KEY=<key> (required for aircraft mode)
-- AISHUB_API_KEY=<key> (required for vessels mode)
-
-Environment variables (MQTT, optional standalone):
-- SSA_MQTT_HOST=<host>
-- SSA_MQTT_PORT=1883
-- SSA_MQTT_TOPIC=sky-and-sea-alert/events
-- SSA_MQTT_USERNAME=<optional>
-- SSA_MQTT_PASSWORD=<optional>
-- SSA_MQTT_TLS=0|1 (default 0)
-- SSA_MQTT_ALLOW_IN_MESHMONITOR=0|1 (default 0)
-
-API Key reality (documented):
-- These APIs are typically free for personal/hobby/open-source use, but require accounts and are rate-limited.
+No scraping. No shared keys. No direct radio transmission.
 """
 
 from __future__ import annotations
@@ -63,11 +44,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
-SSA_VERSION = "v1.2.0"
+SSA_VERSION = "v2.0.0"
 
-# =========================
-# CONFIG (KISS)
-# =========================
+# -------------------------
+# ENV helpers
+# -------------------------
 
 def _env_str(name: str, default: str = "") -> str:
     v = os.getenv(name)
@@ -92,7 +73,12 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+# -------------------------
+# Core config
+# -------------------------
+
 SSA_MODE = _env_str("SSA_MODE", "sky_and_sea").strip().lower()
+
 SSA_LAT = _env_float("SSA_LAT", 0.0)
 SSA_LON = _env_float("SSA_LON", 0.0)
 
@@ -102,8 +88,22 @@ SSA_VESSEL_RADIUS_MI = _env_float("SSA_VESSEL_RADIUS_MI", 3.0)
 SSA_POLL_INTERVAL = _env_int("SSA_POLL_INTERVAL", 60)
 SSA_SUPPRESS_MINUTES = _env_int("SSA_SUPPRESS_MINUTES", 15)
 
-ADSBX_API_KEY = _env_str("ADSBX_API_KEY", "").strip()
-AISHUB_API_KEY = _env_str("AISHUB_API_KEY", "").strip()
+# Local sources (recommended)
+SSA_ADSB_URL = _env_str("SSA_ADSB_URL", "http://127.0.0.1:8080/data/aircraft.json").strip()
+SSA_AIS_URL = _env_str("SSA_AIS_URL", "").strip()  # optional: your AIS JSON endpoint
+
+# Cloud sources (optional)
+# ADS-B Exchange via RapidAPI (paid)
+ADSBX_API_KEY = _env_str("ADSBX_API_KEY", "").strip()  # RapidAPI X-RapidAPI-Key
+ADSBX_RAPIDAPI_HOST = _env_str("ADSBX_RAPIDAPI_HOST", "adsbexchange-com1.p.rapidapi.com").strip()
+ADSBX_RAPIDAPI_URL_TEMPLATE = _env_str(
+    "ADSBX_RAPIDAPI_URL_TEMPLATE",
+    "https://adsbexchange-com1.p.rapidapi.com/v2/lat/{lat}/{lon}/{radius_km}",
+).strip()
+
+# AIS Hub (account-based, rate-limited)
+AISHUB_API_KEY = _env_str("AISHUB_API_KEY", "").strip()  # AIS Hub "username"
+AISHUB_URL = _env_str("AISHUB_URL", "https://data.aishub.net/ws.php").strip()
 
 # MQTT (optional)
 SSA_MQTT_HOST = _env_str("SSA_MQTT_HOST", "").strip()
@@ -115,16 +115,16 @@ SSA_MQTT_TLS = _env_bool("SSA_MQTT_TLS", False)
 SSA_MQTT_ALLOW_IN_MESHMONITOR = _env_bool("SSA_MQTT_ALLOW_IN_MESHMONITOR", False)
 
 # MeshMonitor detection
-MM_MESSAGE = os.getenv("MESSAGE")  # present when run via MeshMonitor Auto Responder
+MM_MESSAGE = os.getenv("MESSAGE")  # set by MeshMonitor Auto Responder
 RUNNING_IN_MESHMONITOR = MM_MESSAGE is not None
 
-# in-memory dedupe (KISS)
+# In-memory dedupe (KISS)
 _last_alert_ts: Dict[str, float] = {}
 
 
-# =========================
-# HELPERS
-# =========================
+# -------------------------
+# Utility
+# -------------------------
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -132,6 +132,26 @@ def _now_iso() -> str:
 def _status(msg: str) -> None:
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"{ts} {msg}".strip(), flush=True)
+
+def _clamp_text(s: str, max_len: int = 200) -> str:
+    s = (s or "").strip()
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 1].rstrip() + "…"
+
+def _mm_out(response_text: str) -> None:
+    print(json.dumps({"response": _clamp_text(response_text, 200)}, ensure_ascii=False))
+
+def _parse_command(message: str) -> Tuple[str, str]:
+    raw = (message or "").strip()
+    if not raw:
+        return ("", "")
+    parts = raw.split()
+    head = parts[0].lower()
+    if head not in ("!ssa", "/ssa"):
+        return ("", "")
+    arg = parts[1].lower() if len(parts) > 1 else ""
+    return ("ssa", arg)
 
 def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     r = 3958.7613
@@ -152,7 +172,7 @@ def _suppress(key: str) -> bool:
     _last_alert_ts[key] = now
     return False
 
-def _http_json(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 10) -> Dict[str, Any]:
+def _http_json(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 10) -> Any:
     req = urllib.request.Request(url, method="GET")
     if headers:
         for k, v in headers.items():
@@ -161,39 +181,10 @@ def _http_json(url: str, headers: Optional[Dict[str, str]] = None, timeout: int 
         data = resp.read()
     return json.loads(data.decode("utf-8", errors="replace"))
 
-def _clamp_text(s: str, max_len: int = 200) -> str:
-    s = (s or "").strip()
-    if len(s) <= max_len:
-        return s
-    return s[: max_len - 1].rstrip() + "…"
 
-def _mm_out(response_text: str) -> None:
-    payload = {"response": _clamp_text(response_text, 200)}
-    print(json.dumps(payload, ensure_ascii=False))
-
-def _parse_command(message: str) -> Tuple[str, str]:
-    raw = (message or "").strip()
-    if not raw:
-        return ("", "")
-    parts = raw.split()
-    head = parts[0].lower()
-    if head not in ("!ssa", "/ssa"):
-        return ("", "")
-    arg = parts[1].lower() if len(parts) > 1 else ""
-    return ("ssa", arg)
-
-def _needs_keys_for(mode: str) -> List[str]:
-    missing: List[str] = []
-    if mode in ("aircraft", "sky_and_sea") and not ADSBX_API_KEY:
-        missing.append("ADSBX_API_KEY (ADS-B Exchange, free account-based)")
-    if mode in ("vessels", "sky_and_sea") and not AISHUB_API_KEY:
-        missing.append("AISHUB_API_KEY (AIS Hub, free account-based)")
-    return missing
-
-
-# =========================
-# MQTT (OPTIONAL)
-# =========================
+# -------------------------
+# MQTT (optional)
+# -------------------------
 
 def _mqtt_enabled() -> bool:
     if not SSA_MQTT_HOST:
@@ -214,7 +205,6 @@ def _mqtt_publish(event: Dict[str, Any]) -> None:
 
     msg = json.dumps(event, ensure_ascii=False)
     cmd = [mosq, "-h", SSA_MQTT_HOST, "-p", str(SSA_MQTT_PORT), "-t", SSA_MQTT_TOPIC, "-m", msg]
-
     if SSA_MQTT_USERNAME:
         cmd += ["-u", SSA_MQTT_USERNAME]
     if SSA_MQTT_PASSWORD:
@@ -227,48 +217,113 @@ def _mqtt_publish(event: Dict[str, Any]) -> None:
     except Exception:
         pass
 
+def _emit_event(event_type: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    event = {
+        "source": "sky-and-sea-alert",
+        "version": SSA_VERSION,
+        "ts": _now_iso(),
+        "type": event_type,
+        "mode": SSA_MODE,
+        "geo": {"lat": SSA_LAT, "lon": SSA_LON},
+        "message": message,
+        "data": data or {},
+    }
+    if not RUNNING_IN_MESHMONITOR:
+        print(message, flush=True)
+    _mqtt_publish(event)
 
-# =========================
-# DATA SOURCES
-# =========================
 
-def _fetch_aircraft() -> List[Dict[str, Any]]:
+# -------------------------
+# Data acquisition
+# -------------------------
+
+def _fetch_aircraft_local() -> List[Dict[str, Any]]:
+    # Typical dump1090/readsb endpoint:
+    #   http://<host>:8080/data/aircraft.json
+    data = _http_json(SSA_ADSB_URL, headers=None, timeout=8)
+    # Common formats:
+    # 1) {"aircraft":[...]} (dump1090/readsb)
+    if isinstance(data, dict) and isinstance(data.get("aircraft"), list):
+        return data["aircraft"]
+    # 2) direct list
+    if isinstance(data, list):
+        return data
+    return []
+
+def _fetch_aircraft_rapidapi() -> List[Dict[str, Any]]:
     if not ADSBX_API_KEY:
-        raise RuntimeError("ADSBX_API_KEY missing")
+        raise RuntimeError("ADSBX_API_KEY missing (RapidAPI X-RapidAPI-Key)")
 
     radius_km = max(0.1, SSA_AIRCRAFT_RADIUS_MI * 1.609344)
-    url = f"https://api.adsbexchange.com/v2/lat/{SSA_LAT}/{SSA_LON}/{radius_km:.3f}"
-    headers = {"api-auth": ADSBX_API_KEY}
+    url = ADSBX_RAPIDAPI_URL_TEMPLATE.format(
+        lat=SSA_LAT,
+        lon=SSA_LON,
+        radius_km=f"{radius_km:.3f}",
+    )
 
+    headers = {
+        "X-RapidAPI-Key": ADSBX_API_KEY,
+        "X-RapidAPI-Host": ADSBX_RAPIDAPI_HOST,
+    }
     data = _http_json(url, headers=headers, timeout=10)
-    ac = data.get("ac")
-    return ac if isinstance(ac, list) else []
 
-def _fetch_vessels() -> List[Dict[str, Any]]:
+    # ADSBx-style responses often include "ac": [...]
+    if isinstance(data, dict) and isinstance(data.get("ac"), list):
+        return data["ac"]
+    # Some endpoints may return "aircraft": [...]
+    if isinstance(data, dict) and isinstance(data.get("aircraft"), list):
+        return data["aircraft"]
+    # Fallback: list
+    if isinstance(data, list):
+        return data
+    return []
+
+def _fetch_vessels_local() -> List[Dict[str, Any]]:
+    if not SSA_AIS_URL:
+        raise RuntimeError("SSA_AIS_URL missing (local AIS JSON endpoint)")
+    data = _http_json(SSA_AIS_URL, headers=None, timeout=8)
+    # Accept:
+    # - {"vessels":[...]} or {"ships":[...]} or list
+    if isinstance(data, dict):
+        for k in ("vessels", "ships", "targets", "ais"):
+            v = data.get(k)
+            if isinstance(v, list):
+                return v
+    if isinstance(data, list):
+        return data
+    return []
+
+def _fetch_vessels_aishub() -> List[Dict[str, Any]]:
     if not AISHUB_API_KEY:
-        raise RuntimeError("AISHUB_API_KEY missing")
+        raise RuntimeError("AISHUB_API_KEY missing (AIS Hub username/key)")
 
     radius = max(0.1, SSA_VESSEL_RADIUS_MI)
     url = (
-        "https://data.aishub.net/ws.php"
+        f"{AISHUB_URL}"
         f"?username={urllib.parse.quote(AISHUB_API_KEY)}"
         "&format=1"
         f"&lat={SSA_LAT}&lon={SSA_LON}"
         f"&radius={radius}"
     )
-
     data = _http_json(url, headers=None, timeout=10)
-    ships = data.get("ships")
-    return ships if isinstance(ships, list) else []
+    if isinstance(data, dict) and isinstance(data.get("ships"), list):
+        return data["ships"]
+    if isinstance(data, dict) and isinstance(data.get("vessels"), list):
+        return data["vessels"]
+    if isinstance(data, list):
+        return data
+    return []
 
 
-# =========================
-# ALERT FORMATTING
-# =========================
+# -------------------------
+# Alert formatting
+# -------------------------
 
 def _aircraft_alert_lines(ac_list: List[Dict[str, Any]], mesh_compact: bool) -> List[str]:
     out: List[str] = []
     for ac in ac_list:
+        # dump1090/readsb: lat/lon fields are "lat", "lon"
+        # ADSBx: also lat/lon typically
         lat = ac.get("lat")
         lon = ac.get("lon")
         if lat is None or lon is None:
@@ -281,80 +336,88 @@ def _aircraft_alert_lines(ac_list: List[Dict[str, Any]], mesh_compact: bool) -> 
         if dist > SSA_AIRCRAFT_RADIUS_MI:
             continue
 
-        callsign = (ac.get("flight") or ac.get("call") or "UNKNOWN").strip()
-        icao = (ac.get("icao") or ac.get("hex") or "").strip()
+        callsign = (ac.get("flight") or ac.get("call") or ac.get("callsign") or "").strip()
+        icao = (ac.get("hex") or ac.get("icao") or ac.get("icao24") or "").strip()
         alt = ac.get("alt_baro")
+        if alt is None:
+            alt = ac.get("altitude")
         alt_ft = "?" if alt is None else str(alt)
 
-        dedupe_key = f"air:{callsign or icao or 'unknown'}"
+        label = callsign or icao or "UNKNOWN"
+        dedupe_key = f"air:{label}"
         if _suppress(dedupe_key):
             continue
 
         if mesh_compact:
-            line = f"✈️ {callsign or (icao or 'UNKNOWN')} {dist:.1f}mi {alt_ft}ft"
+            out.append(f"✈️ {label} {dist:.1f}mi {alt_ft}ft")
         else:
-            line = (
+            out.append(
                 "✈️ Aircraft overhead\n"
-                f"Callsign: {callsign or 'UNKNOWN'}\n"
+                f"ID: {label}\n"
                 f"Altitude: {alt_ft} ft\n"
                 f"Distance: {dist:.1f} mi"
             )
-        out.append(line)
-
     return out
 
-def _vessel_alert_lines(ship_list: List[Dict[str, Any]], mesh_compact: bool) -> List[str]:
+def _vessel_alert_lines(v_list: List[Dict[str, Any]], mesh_compact: bool) -> List[str]:
     out: List[str] = []
-    for s in ship_list:
-        name = (s.get("shipname") or s.get("name") or "UNKNOWN").strip()
-        speed = s.get("speed")
-        spd = "?" if speed is None else str(speed)
-        dist = s.get("distance")
-        dmi = "?" if dist is None else str(dist)
+    for v in v_list:
+        # AIS Hub often provides distance directly; local feeds might provide lat/lon.
+        name = (v.get("shipname") or v.get("name") or v.get("vessel") or v.get("callsign") or "UNKNOWN").strip()
+        mmsi = str(v.get("mmsi") or v.get("MMSI") or "").strip()
 
-        dedupe_key = f"sea:{name or 'UNKNOWN'}"
+        speed = v.get("speed")
+        if speed is None:
+            speed = v.get("sog")  # speed over ground
+        spd = "?" if speed is None else str(speed)
+
+        dmi = None
+        if v.get("distance") is not None:
+            try:
+                dmi = float(v.get("distance"))
+            except Exception:
+                dmi = None
+
+        if dmi is None:
+            # Try compute from lat/lon if present
+            lat = v.get("lat") if v.get("lat") is not None else v.get("latitude")
+            lon = v.get("lon") if v.get("lon") is not None else v.get("longitude")
+            if lat is not None and lon is not None:
+                try:
+                    dmi = _haversine_miles(SSA_LAT, SSA_LON, float(lat), float(lon))
+                except Exception:
+                    dmi = None
+
+        if dmi is None:
+            # If we cannot compute distance, still allow but do not enforce radius
+            pass
+        else:
+            if dmi > SSA_VESSEL_RADIUS_MI:
+                continue
+
+        label = name if name != "UNKNOWN" else (mmsi or "UNKNOWN")
+        dedupe_key = f"sea:{label}"
         if _suppress(dedupe_key):
             continue
 
         if mesh_compact:
-            line = f"🚢 {name or 'UNKNOWN'} {dmi}mi {spd}kn"
+            if dmi is None:
+                out.append(f"🚢 {label} ?mi {spd}kn")
+            else:
+                out.append(f"🚢 {label} {dmi:.1f}mi {spd}kn")
         else:
-            line = (
+            out.append(
                 "🚢 Vessel nearby\n"
-                f"Name: {name or 'UNKNOWN'}\n"
+                f"ID: {label}\n"
                 f"Speed: {spd} kn\n"
-                f"Distance: {dmi} mi"
+                f"Distance: {('?' if dmi is None else f'{dmi:.1f}')} mi"
             )
-        out.append(line)
-
     return out
 
 
-# =========================
-# EVENT EMIT
-# =========================
-
-def _emit_event(event_type: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
-    event = {
-        "source": "sky-and-sea-alert",
-        "version": SSA_VERSION,
-        "ts": _now_iso(),
-        "type": event_type,
-        "mode": SSA_MODE,
-        "geo": {"lat": SSA_LAT, "lon": SSA_LON},
-        "message": message,
-        "data": data or {},
-    }
-
-    if not RUNNING_IN_MESHMONITOR:
-        print(message, flush=True)
-
-    _mqtt_publish(event)
-
-
-# =========================
-# RUN MODES
-# =========================
+# -------------------------
+# Modes
+# -------------------------
 
 def _demo(mesh_compact: bool) -> List[str]:
     if mesh_compact:
@@ -365,77 +428,95 @@ def _demo(mesh_compact: bool) -> List[str]:
         ]
     return [
         "🟢 Sky and Sea Alert demo started",
-        "✈️ Aircraft overhead\nCallsign: DEMO123\nAltitude: 9200 ft\nDistance: 6.1 mi",
-        "🚢 Vessel nearby\nName: DEMO VESSEL\nSpeed: 12.4 kn\nDistance: 2.3 mi",
+        "✈️ Aircraft overhead\nID: DEMO123\nAltitude: 9200 ft\nDistance: 6.1 mi",
+        "🚢 Vessel nearby\nID: DEMO VESSEL\nSpeed: 12.4 kn\nDistance: 2.3 mi",
         "✅ Demo complete",
     ]
-
-def _single_shot(mode: str, mesh_compact: bool) -> List[str]:
-    if mode == "demo":
-        return _demo(mesh_compact)
-
-    # First-run UX: if keys are missing for this mode, say exactly what's needed.
-    missing = _needs_keys_for(mode)
-    if missing:
-        if mesh_compact:
-            return ["🔑 Missing API key(s). Try !ssa demo or set keys."]
-        return [
-            "🔑 Missing API key(s) for live data.",
-            "These providers are typically free for personal/hobby/open-source use, but require accounts and are rate-limited.",
-            "Missing:",
-            *[f"- {m}" for m in missing],
-            "Tip: run demo mode first: SSA_MODE=demo",
-        ]
-
-    lines: List[str] = []
-    had_error = False
-
-    if mode in ("aircraft", "sky_and_sea"):
-        try:
-            ac = _fetch_aircraft()
-            lines.extend(_aircraft_alert_lines(ac, mesh_compact))
-        except Exception as e:
-            had_error = True
-            lines.append("⚠️ Aircraft fetch error" if mesh_compact else f"⚠️ Aircraft data error: {e}")
-
-    if mode in ("vessels", "sky_and_sea"):
-        try:
-            ships = _fetch_vessels()
-            lines.extend(_vessel_alert_lines(ships, mesh_compact))
-        except Exception as e:
-            had_error = True
-            lines.append("⚠️ Vessel fetch error" if mesh_compact else f"⚠️ Vessel data error: {e}")
-
-    if not lines and not had_error:
-        lines.append("⏸ No aircraft or vessels in range")
-
-    return lines
 
 def _help_text(mesh_compact: bool) -> str:
     if mesh_compact:
         return "Usage: !ssa [sky|sea|demo|help]"
     return (
         f"Sky and Sea Alert {SSA_VERSION}\n"
-        "Commands:\n"
-        "  !ssa        run configured mode\n"
-        "  !ssa sky    aircraft-only single-shot\n"
-        "  !ssa sea    vessels-only single-shot\n"
-        "  !ssa demo   sample alerts (no keys)\n"
-        "  !ssa help   this help\n"
         "\n"
-        "API Keys:\n"
-        "  These APIs are free (account-based) for personal/hobby/open-source use.\n"
-        "  ADS-B Exchange key -> ADSBX_API_KEY\n"
-        "  AIS Hub key        -> AISHUB_API_KEY\n"
+        "Primary (recommended): local receivers\n"
+        "  ADS-B: dump1090/readsb JSON (SSA_ADSB_URL)\n"
+        "  AIS:   AIS-catcher/other JSON (SSA_AIS_URL)\n"
+        "\n"
+        "Optional cloud sources\n"
+        "  ADS-B Exchange via RapidAPI (paid): ADSBX_API_KEY + ADSBX_RAPIDAPI_HOST\n"
+        "  AIS Hub (account-based): AISHUB_API_KEY (username)\n"
+        "\n"
+        "MeshMonitor commands:\n"
+        "  !ssa        run configured mode\n"
+        "  !ssa sky    aircraft single-shot\n"
+        "  !ssa sea    vessels single-shot\n"
+        "  !ssa demo   sample alerts\n"
+        "  !ssa help   this help\n"
     )
 
+def _single_shot(mode: str, mesh_compact: bool) -> List[str]:
+    mode = mode.strip().lower()
 
-# =========================
-# MAIN
-# =========================
+    if mode == "demo":
+        return _demo(mesh_compact)
+
+    lines: List[str] = []
+    had_error = False
+
+    # Aircraft
+    if mode in ("aircraft-local", "sky_and_sea", "sky_and_sea_local", "aircraft"):
+        try:
+            ac = _fetch_aircraft_local()
+            lines.extend(_aircraft_alert_lines(ac, mesh_compact))
+        except Exception as e:
+            had_error = True
+            lines.append("⚠️ Aircraft local fetch error" if mesh_compact else f"⚠️ Aircraft local error: {e}")
+
+    if mode in ("aircraft-cloud",):
+        try:
+            ac = _fetch_aircraft_rapidapi()
+            lines.extend(_aircraft_alert_lines(ac, mesh_compact))
+        except Exception as e:
+            had_error = True
+            lines.append("⚠️ Aircraft cloud fetch error" if mesh_compact else f"⚠️ Aircraft cloud error: {e}")
+
+    # Vessels
+    if mode in ("vessels-local", "sky_and_sea", "sky_and_sea_local", "vessels", "sea_and_sky_local"):
+        try:
+            ships = _fetch_vessels_local()
+            lines.extend(_vessel_alert_lines(ships, mesh_compact))
+        except Exception as e:
+            had_error = True
+            lines.append("⚠️ Vessel local fetch error" if mesh_compact else f"⚠️ Vessel local error: {e}")
+
+    if mode in ("vessels-cloud",):
+        try:
+            ships = _fetch_vessels_aishub()
+            lines.extend(_vessel_alert_lines(ships, mesh_compact))
+        except Exception as e:
+            had_error = True
+            lines.append("⚠️ Vessel cloud fetch error" if mesh_compact else f"⚠️ Vessel cloud error: {e}")
+
+    if not lines and not had_error:
+        lines.append("⏸ No aircraft or vessels in range")
+
+    return lines
+
+
+# -------------------------
+# Main
+# -------------------------
 
 def main() -> int:
-    mode = SSA_MODE if SSA_MODE in ("aircraft", "vessels", "sky_and_sea", "demo") else "sky_and_sea"
+    # Normalize mode aliases (keep KISS)
+    mode = SSA_MODE
+    if mode in ("sky+sea", "sky-sea", "sky_and_sea_local", "local", "default"):
+        mode = "sky_and_sea"
+    if mode in ("aircraft_only", "sky"):
+        mode = "aircraft-local"
+    if mode in ("vessels_only", "sea"):
+        mode = "vessels-local"
 
     if RUNNING_IN_MESHMONITOR:
         cmd, arg = _parse_command(MM_MESSAGE or "")
@@ -452,9 +533,11 @@ def main() -> int:
         if arg == "demo":
             lines = _single_shot("demo", mesh_compact)
         elif arg == "sky":
-            lines = _single_shot("aircraft", mesh_compact)
+            # Use local by default for aircraft
+            lines = _single_shot("aircraft-local", mesh_compact)
         elif arg == "sea":
-            lines = _single_shot("vessels", mesh_compact)
+            # Use local by default for vessels
+            lines = _single_shot("vessels-local", mesh_compact)
         else:
             lines = _single_shot(mode, mesh_compact)
 
@@ -462,25 +545,30 @@ def main() -> int:
         _mm_out(joined if joined else "⏸ No data")
         return 0
 
-    # Standalone mode
+    # Standalone loop
     _status(f"🟢 Sky and Sea Alert started ({SSA_VERSION})")
     _status(f"Mode: {mode}")
     _status(f"Location: {SSA_LAT}, {SSA_LON}")
+    _status(f"ADS-B local: {SSA_ADSB_URL}")
+    _status(f"AIS local: {SSA_AIS_URL or '(not set)'}")
+    _status(f"MQTT: {'enabled' if _mqtt_enabled() else 'disabled'}")
     _status(f"Polling every {max(1, SSA_POLL_INTERVAL)}s")
-    _status("MQTT: enabled" if _mqtt_enabled() else "MQTT: disabled")
 
     if mode == "demo":
         for line in _single_shot("demo", mesh_compact=False):
-            _emit_event("status" if line.startswith(("🟢", "✅")) else "demo", line)
+            _emit_event("demo", line)
         return 0
 
-    # Helpful first-run warning if keys are missing
-    missing = _needs_keys_for(mode)
-    if missing:
-        _status("🔑 Missing API key(s) for selected mode.")
-        for m in missing:
-            _status(f"   - {m}")
-        _status("Tip: run demo mode first: SSA_MODE=demo")
+    # Gentle first-run hints (do not spam, just informative)
+    if mode in ("aircraft-local", "sky_and_sea") and not SSA_ADSB_URL:
+        _status("⚠️ SSA_ADSB_URL not set; aircraft-local will not work")
+    if mode in ("vessels-local", "sky_and_sea") and not SSA_AIS_URL:
+        _status("⚠️ SSA_AIS_URL not set; vessels-local will not work (set SSA_AIS_URL or use vessels-cloud)")
+
+    if mode == "aircraft-cloud" and not ADSBX_API_KEY:
+        _status("🔑 Missing ADSBX_API_KEY (RapidAPI key) for aircraft-cloud")
+    if mode == "vessels-cloud" and not AISHUB_API_KEY:
+        _status("🔑 Missing AISHUB_API_KEY (AIS Hub username) for vessels-cloud")
 
     while True:
         _status("🔄 Checking sky and sea traffic…")
