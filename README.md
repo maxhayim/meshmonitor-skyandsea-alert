@@ -250,11 +250,7 @@ Sky and Sea Alert **never transmits on radios directly**.
 
 ## Roadmap
 
-- Multi-receiver aggregation
 - Receiver health monitoring
-- Coverage overlap detection
-- Community receiver profiles
-- Persistent distributed state
 
 ---
 
