@@ -9,7 +9,7 @@
 
 # ✈️ 🛥️ Sky and Sea Alert
 
-**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **your own locally collected data** or **official cloud APIs**.
+**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **your own locally collected data** or **official cloud APIs** over [**Meshstatic**](https://meshtastic.org/).
 
 MeshMonitor handles **Meshtastic, webhooks, routing, and delivery**.  
 Sky and Sea Alert focuses purely on **detection, filtering, and alert formatting**.
