@@ -275,4 +275,4 @@ Pull requests are welcome. Open an issue first to discuss ideas or report bugs.<
 * Shout out to [ADS-B Exchange](https://www.adsbexchange.com)
 * Shout out to [AIS Hub](https://www.aishub.net)
 
-Discover other community-contributed Auto Responder scripts for MeshMonitor [here](https://meshmonitor.org/user-scripts.html).
+Discover other community-contributed scripts for MeshMonitor: https://meshmonitor.org/user-scripts.html
