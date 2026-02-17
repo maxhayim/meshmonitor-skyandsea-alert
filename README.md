@@ -9,7 +9,7 @@
 
 # ✈️ 🛥️ Sky and Sea Alert
 
-**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude using **your own locally collected data** or **official cloud APIs** over [**Meshstatic**](https://meshtastic.org/).
+**Sky and Sea Alert** is a lightweight Python [**MeshMonitor**](https://github.com/Yeraze/MeshMonitor) script that provides **aircraft overhead** and **vessel nearby** alerts for a configured latitude/longitude over [**Meshtastic**](https://meshtastic.org/), using **your own locally collected data** or **official cloud APIs**.
 
 MeshMonitor handles **Meshtastic, webhooks, routing, and delivery**.  
 Sky and Sea Alert focuses purely on **detection, filtering, and alert formatting**.
@@ -22,13 +22,25 @@ No direct radio transmission.
 
 ## 🚨 Major Release Notice (v2.0.0)
 
-Sky and Sea Alert v2.0.0 introduces a **breaking architectural change**:
+Sky and Sea Alert v2.0.0 introduced a **breaking architectural change**:
 
 - ❌ No longer positioned as “free cloud API” software  
 - ✅ Local receivers are now the **primary and recommended data source**  
 - ✅ Cloud APIs are **explicitly optional and clearly labeled (paid / rate-limited)**  
 
 This change removes API shutdown risk, ToS ambiguity, and onboarding confusion.
+
+---
+
+## ✅ Update Notice (v2.1.0)
+
+v2.1.0 expands **aircraft cloud provider support**:
+
+- ✅ Adds **free cloud ADS-B options** (no RapidAPI required)
+  - **adsb.lol** (recommended)
+  - **airplanes.live**
+- ✅ Keeps **ADSBexchange via RapidAPI** as an optional paid provider
+- ✅ Preserves local-first design as the recommended path
 
 ---
 
@@ -60,14 +72,47 @@ export SSA_LON=-80.2220
 
 ---
 
-### 4) Choose your data source (recommended paths below)
+### 4) Choose your data source
 
-- **Free & unlimited** → Local receivers (ADS-B + AIS)
-- **Convenience** → Paid / account-based cloud APIs
+- **Free & unlimited** → Local receivers (ADS-B + AIS) (recommended)
+- **No hardware** → Cloud providers (free or paid)
 
 ---
 
-## Supported Data Sources (v2.0.0)
+### 5) Run live mode (choose one)
+
+#### Option A — Local-first (recommended)
+
+export SSA_MODE=sky_and_sea  
+export SSA_ADSB_URL=http://127.0.0.1:8080/data/aircraft.json  
+export SSA_AIS_URL=http://127.0.0.1:8181/ais.json  
+
+python sky_and_sea_alert.py
+
+(Use your actual local endpoints. See sections below.)
+
+---
+
+#### Option B — Free cloud aircraft + AIS Hub
+
+export SSA_MODE=aircraft-cloud  
+export SSA_AIRCRAFT_PROVIDER=adsblol  
+python sky_and_sea_alert.py
+
+For vessels-cloud (AIS Hub), see AIS Hub section.
+
+---
+
+#### Option C — Paid ADSBexchange via RapidAPI (optional)
+
+export SSA_MODE=aircraft-cloud  
+export SSA_AIRCRAFT_PROVIDER=adsbx_rapidapi  
+export ADSBX_API_KEY="YOUR_RAPIDAPI_KEY"  
+python sky_and_sea_alert.py
+
+---
+
+## Supported Data Sources (v2.x)
 
 ### ✈️ Aircraft (ADS-B)
 
@@ -86,9 +131,25 @@ No API keys.
 No rate limits.  
 Real-time data.
 
+##### Local aircraft endpoint
+
+Default expected endpoint:
+
+export SSA_ADSB_URL=http://127.0.0.1:8080/data/aircraft.json
+
+This matches common dump1090/readsb installs.
+
 ---
 
-#### 🌍 Remote Access (NEW)
+#### 🐳 Docker “easy mode” (recommended for container users)
+
+If you want a clean Docker-first ADS-B stack, look at **SDR-Enthusiasts** software offerings (e.g., ultrafeeder + readsb/tar1090).
+
+Sky and Sea Alert stays the alerting layer; those stacks handle receiver/decoding and expose the same `aircraft.json` endpoint.
+
+---
+
+#### 🌍 Remote Access (VPN)
 
 Local receivers can be accessed securely over the internet using a VPN.
 
@@ -104,9 +165,47 @@ Remote Pi (ADS-B) → Tailscale → Sky and Sea Alert → MeshMonitor
 
 ---
 
-#### 💲 Optional: ADS-B Exchange (Paid, Cloud)
+#### ☁️ Cloud Aircraft Providers (v2.1.0)
 
-ADS-B Exchange no longer provides free API access.
+Sky and Sea Alert supports cloud aircraft lookups via `SSA_MODE=aircraft-cloud` plus a provider selector:
+
+export SSA_MODE=aircraft-cloud  
+export SSA_AIRCRAFT_PROVIDER=adsblol  # adsblol | airplaneslive | adsbx_rapidapi
+
+##### ✅ adsb.lol (recommended free cloud)
+
+- API base: https://api.adsb.lol
+- No RapidAPI required
+- Subject to rate limits and future policy changes (always use responsibly)
+
+Use:
+
+export SSA_AIRCRAFT_PROVIDER=adsblol
+
+(Optional override):
+
+export SSA_ADSBLOL_BASE=https://api.adsb.lol
+
+---
+
+##### ✅ airplanes.live (free + paid tiers)
+
+- API base: https://api.airplanes.live
+- Free tier available; policies may change
+
+Use:
+
+export SSA_AIRCRAFT_PROVIDER=airplaneslive
+
+(Optional override):
+
+export SSA_AIRPLANESLIVE_BASE=https://api.airplanes.live
+
+---
+
+##### 💲 ADSBexchange via RapidAPI (paid)
+
+ADSBexchange no longer provides free API access.
 
 **Official low-cost option:**  
 https://www.adsbexchange.com/api-lite/
@@ -114,16 +213,14 @@ https://www.adsbexchange.com/api-lite/
 **RapidAPI listing:**  
 https://rapidapi.com/adsbx/api/adsbexchange-com1
 
-##### How to get access
+How to get access:
 1) Create a RapidAPI account  
-2) Open the ADS-B Exchange API listing  
+2) Open the ADSBexchange API listing  
 3) Choose a pricing plan  
 4) Copy your **X-RapidAPI-Key**
 
-##### Environment variable
+Environment variable:
 export ADSBX_API_KEY="YOUR_RAPIDAPI_KEY"
-
-This option is **paid**, **official**, and **supported**, but not required.
 
 ---
 
@@ -140,21 +237,25 @@ This option is **paid**, **official**, and **supported**, but not required.
 Flow:
 AIS receiver → AIS-catcher → Sky and Sea Alert → MeshMonitor → Meshtastic
 
+Local AIS endpoint (example, user-provided):
+
+export SSA_AIS_URL=http://127.0.0.1:8181/ais.json
+
 ---
 
 #### 🌐 Optional: AIS Hub (Account-Based)
 
-**AIS Hub API page:**  
+AIS Hub API page:  
 https://www.aishub.net/api
 
-##### How to get access
+How to get access:
 1) Create an AIS Hub account  
 2) Visit the API page above  
 3) Use the **AIS API** tab  
-4) Your API “key” is your **AIS Hub username**  
+4) Your API “key” is typically your **AIS Hub username** for the webservice  
 5) Observe the documented rate limit (≈1 request/minute)
 
-##### Environment variable
+Environment variable:
 export AISHUB_API_KEY="YOUR_AISHUB_USERNAME"
 
 AIS Hub is free for hobby use but **rate-limited**.
@@ -164,10 +265,10 @@ AIS Hub is free for hobby use but **rate-limited**.
 ## Operating Modes
 
 - demo — sample alerts, no data sources
-- aircraft-local — local ADS-B receiver
-- vessels-local — local AIS receiver
+- aircraft-local — local ADS-B receiver (dump1090/readsb)
+- vessels-local — local AIS receiver (AIS JSON endpoint)
 - sky_and_sea — local ADS-B + local AIS
-- aircraft-cloud — ADS-B Exchange API Lite (paid)
+- aircraft-cloud — cloud aircraft lookup (provider selected by `SSA_AIRCRAFT_PROVIDER`)
 - vessels-cloud — AIS Hub (account-based)
 
 ---
@@ -194,6 +295,8 @@ No shared credentials.
 
 ## Configuration (Environment Variables)
 
+### Core
+
 SSA_MODE=sky_and_sea  
 SSA_LAT=25.7816  
 SSA_LON=-80.2220  
@@ -204,8 +307,25 @@ SSA_VESSEL_RADIUS_MI=3
 SSA_POLL_INTERVAL=60  
 SSA_SUPPRESS_MINUTES=15  
 
-Optional (cloud):
-ADSBX_API_KEY=your_rapidapi_key  
+### Aircraft (Local)
+
+SSA_ADSB_URL=http://127.0.0.1:8080/data/aircraft.json  
+
+### Aircraft (Cloud)
+
+SSA_MODE=aircraft-cloud  
+SSA_AIRCRAFT_PROVIDER=adsblol        # adsblol | airplaneslive | adsbx_rapidapi  
+SSA_ADSBLOL_BASE=https://api.adsb.lol  
+SSA_AIRPLANESLIVE_BASE=https://api.airplanes.live  
+ADSBX_API_KEY=your_rapidapi_key       # only for adsbx_rapidapi  
+
+### Vessels (Local)
+
+SSA_AIS_URL=http://127.0.0.1:8181/ais.json  
+
+### Vessels (Cloud)
+
+SSA_MODE=vessels-cloud  
 AISHUB_API_KEY=your_aishub_username  
 
 ---
@@ -237,7 +357,7 @@ Sky and Sea Alert **never transmits on radios directly**.
 
 ---
 
-## Design Goals (v2.0.0)
+## Design Goals (v2.x)
 
 - Local-first sensing
 - Honest cost model
@@ -251,6 +371,10 @@ Sky and Sea Alert **never transmits on radios directly**.
 ## Roadmap
 
 - Receiver health monitoring
+- Multi-receiver aggregation (ADS-B + AIS)
+- Coverage overlap / redundancy detection
+- Optional persistent distributed state
+- Enhanced alert classification
 
 ---
 
@@ -265,14 +389,16 @@ Full license text: https://opensource.org/licenses/MIT
 
 ## Contributing
 
-Pull requests are welcome. Open an issue first to discuss ideas or report bugs.</p>
+Pull requests are welcome. Open an issue first to discuss ideas or report bugs.
 
 ---
 
 ## Acknowledgments
 
-* MeshMonitor built by [Yeraze](https://github.com/Yeraze) 
-* Shout out to [ADS-B Exchange](https://www.adsbexchange.com)
-* Shout out to [AIS Hub](https://www.aishub.net)
+* MeshMonitor built by [Yeraze](https://github.com/Yeraze)  
+* adsb.lol (cloud ADS-B provider)  
+* airplanes.live (cloud ADS-B provider)  
+* ADSBexchange (paid cloud ADS-B via RapidAPI)  
+* AIS Hub (AIS API: https://www.aishub.net/api)  
 
 Discover other community-contributed scripts for MeshMonitor: https://meshmonitor.org/user-scripts.html
