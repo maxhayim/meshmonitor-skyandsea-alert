@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # mm_meta:
 #   name: ✈️ 🛥️ Sky and Sea Alert
-#   emoji: ✈️
+#   emoji: ✈️ 🛥️ 
 #   language: Python
 """
 Sky and Sea Alert — v2.1.0
