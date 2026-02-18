@@ -1,3 +1,5 @@
+## README.md
+
 <p align="center">
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/Python-3.8%2B-blue" alt="Python Version">
@@ -32,15 +34,18 @@ This change removes API shutdown risk, ToS ambiguity, and onboarding confusion.
 
 ---
 
-## ✅ Update Notice (v2.1.0)
+## ✅ Update Notice (v2.2.0)
 
-v2.1.0 expands **aircraft cloud provider support**:
+v2.2.0 standardizes and documents **expanded aircraft cloud provider support**, while preserving the **local-first** architecture:
 
-- ✅ Adds **free cloud ADS-B options** (no RapidAPI required)
-  - **adsb.lol** (recommended)
+- ✅ Free/open aircraft cloud providers (no RapidAPI required)
+  - **ADSB.lol** (recommended)
   - **airplanes.live**
-- ✅ Keeps **ADSBexchange via RapidAPI** as an optional paid provider
-- ✅ Preserves local-first design as the recommended path
+  - **adsb.fi**
+  - **ADSB One**
+- ⚠️ **OpenSky** supported as a limited provider (eligibility and policies apply)
+- 💲 **ADSBexchange via RapidAPI** remains supported as the paid option
+- ✅ Local ADS-B + AIS remains the recommended and most sustainable path
 
 ---
 
@@ -93,13 +98,18 @@ python sky_and_sea_alert.py
 
 ---
 
-#### Option B — Free cloud aircraft + AIS Hub
+#### Option B — Free cloud aircraft (no RapidAPI)
 
 export SSA_MODE=aircraft-cloud  
 export SSA_AIRCRAFT_PROVIDER=adsblol  
 python sky_and_sea_alert.py
 
-For vessels-cloud (AIS Hub), see AIS Hub section.
+Alternate providers:
+
+export SSA_AIRCRAFT_PROVIDER=airplaneslive  
+export SSA_AIRCRAFT_PROVIDER=adsbfi  
+export SSA_AIRCRAFT_PROVIDER=adsbone  
+export SSA_AIRCRAFT_PROVIDER=opensky  
 
 ---
 
@@ -108,6 +118,14 @@ For vessels-cloud (AIS Hub), see AIS Hub section.
 export SSA_MODE=aircraft-cloud  
 export SSA_AIRCRAFT_PROVIDER=adsbx_rapidapi  
 export ADSBX_API_KEY="YOUR_RAPIDAPI_KEY"  
+python sky_and_sea_alert.py
+
+---
+
+#### Option D — AIS Hub (account-based, rate-limited)
+
+export SSA_MODE=vessels-cloud  
+export AISHUB_API_KEY="YOUR_AISHUB_USERNAME"  
 python sky_and_sea_alert.py
 
 ---
@@ -131,13 +149,9 @@ No API keys.
 No rate limits.  
 Real-time data.
 
-##### Local aircraft endpoint
-
-Default expected endpoint:
+Local aircraft endpoint (common default):
 
 export SSA_ADSB_URL=http://127.0.0.1:8080/data/aircraft.json
-
-This matches common dump1090/readsb installs.
 
 ---
 
@@ -153,7 +167,7 @@ Sky and Sea Alert stays the alerting layer; those stacks handle receiver/decodin
 
 Local receivers can be accessed securely over the internet using a VPN.
 
-**Recommended VPN:** Tailscale
+Recommended VPN: Tailscale
 
 - No port forwarding
 - Encrypted
@@ -165,24 +179,35 @@ Remote Pi (ADS-B) → Tailscale → Sky and Sea Alert → MeshMonitor
 
 ---
 
-#### ☁️ Cloud Aircraft Providers (v2.1.0)
-
-Sky and Sea Alert supports cloud aircraft lookups via `SSA_MODE=aircraft-cloud` plus a provider selector:
-
-export SSA_MODE=aircraft-cloud  
-export SSA_AIRCRAFT_PROVIDER=adsblol  # adsblol | airplaneslive | adsbx_rapidapi
-
-##### ✅ adsb.lol (recommended free cloud)
-
-- API base: https://api.adsb.lol
-- No RapidAPI required
-- Subject to rate limits and future policy changes (always use responsibly)
+#### ☁️ Cloud Aircraft Providers (v2.2.0)
 
 Use:
 
+export SSA_MODE=aircraft-cloud  
+export SSA_AIRCRAFT_PROVIDER=<provider>
+
+Providers:
+
+- adsblol (recommended)  
+- airplaneslive  
+- adsbfi  
+- adsbone  
+- opensky (limited)  
+- adsbx_rapidapi (paid)
+
+Cloud APIs can be rate limited and policies can change. Use responsibly.
+
+---
+
+##### ✅ ADSB.lol (recommended free cloud)
+
+Base: https://api.adsb.lol
+
+Provider:
+
 export SSA_AIRCRAFT_PROVIDER=adsblol
 
-(Optional override):
+Optional override:
 
 export SSA_ADSBLOL_BASE=https://api.adsb.lol
 
@@ -190,36 +215,67 @@ export SSA_ADSBLOL_BASE=https://api.adsb.lol
 
 ##### ✅ airplanes.live (free + paid tiers)
 
-- API base: https://api.airplanes.live
-- Free tier available; policies may change
+API guide: http://api.airplanes.live/v2/  
+(Provider defaults to https://api.airplanes.live in the script.)
 
-Use:
+Provider:
 
 export SSA_AIRCRAFT_PROVIDER=airplaneslive
 
-(Optional override):
+Optional override:
 
 export SSA_AIRPLANESLIVE_BASE=https://api.airplanes.live
 
 ---
 
+##### ✅ adsb.fi (open data)
+
+Provider:
+
+export SSA_AIRCRAFT_PROVIDER=adsbfi
+
+Optional override:
+
+export SSA_ADSBFI_BASE=https://opendata.adsb.fi/api
+
+---
+
+##### ✅ ADSB One (api.adsb.one)
+
+Provider:
+
+export SSA_AIRCRAFT_PROVIDER=adsbone
+
+Optional override:
+
+export SSA_ADSBONE_BASE=https://api.adsb.one
+
+---
+
+##### ⚠️ OpenSky Network (limited)
+
+OpenSky’s policy may restrict access; eligibility requirements can apply.
+
+Provider:
+
+export SSA_AIRCRAFT_PROVIDER=opensky
+
+Optional override:
+
+export SSA_OPENSKY_BASE=https://opensky-network.org/api
+
+---
+
 ##### 💲 ADSBexchange via RapidAPI (paid)
 
-ADSBexchange no longer provides free API access.
-
-**Official low-cost option:**  
+Official low-cost option:  
 https://www.adsbexchange.com/api-lite/
 
-**RapidAPI listing:**  
+RapidAPI listing:  
 https://rapidapi.com/adsbx/api/adsbexchange-com1
 
-How to get access:
-1) Create a RapidAPI account  
-2) Open the ADSBexchange API listing  
-3) Choose a pricing plan  
-4) Copy your **X-RapidAPI-Key**
-
 Environment variable:
+
 export ADSBX_API_KEY="YOUR_RAPIDAPI_KEY"
 
 ---
@@ -237,7 +293,7 @@ export ADSBX_API_KEY="YOUR_RAPIDAPI_KEY"
 Flow:
 AIS receiver → AIS-catcher → Sky and Sea Alert → MeshMonitor → Meshtastic
 
-Local AIS endpoint (example, user-provided):
+Local AIS endpoint is user-provided:
 
 export SSA_AIS_URL=http://127.0.0.1:8181/ais.json
 
@@ -251,14 +307,13 @@ https://www.aishub.net/api
 How to get access:
 1) Create an AIS Hub account  
 2) Visit the API page above  
-3) Use the **AIS API** tab  
-4) Your API “key” is typically your **AIS Hub username** for the webservice  
-5) Observe the documented rate limit (≈1 request/minute)
+3) Use the AIS API tab  
+4) Your API “key” is typically your AIS Hub username for the webservice  
+5) Observe the documented rate limits
 
 Environment variable:
-export AISHUB_API_KEY="YOUR_AISHUB_USERNAME"
 
-AIS Hub is free for hobby use but **rate-limited**.
+export AISHUB_API_KEY="YOUR_AISHUB_USERNAME"
 
 ---
 
@@ -268,16 +323,8 @@ AIS Hub is free for hobby use but **rate-limited**.
 - aircraft-local — local ADS-B receiver (dump1090/readsb)
 - vessels-local — local AIS receiver (AIS JSON endpoint)
 - sky_and_sea — local ADS-B + local AIS
-- aircraft-cloud — cloud aircraft lookup (provider selected by `SSA_AIRCRAFT_PROVIDER`)
+- aircraft-cloud — cloud aircraft lookup (selected by SSA_AIRCRAFT_PROVIDER)
 - vessels-cloud — AIS Hub (account-based)
-
----
-
-## Repository layout
-
-    .
-    ├── sky_and_sea_alert.py   # Runtime script
-    └── README.md              # Documentation
 
 ---
 
@@ -295,35 +342,36 @@ No shared credentials.
 
 ## Configuration (Environment Variables)
 
-### Core
+Core:
 
 SSA_MODE=sky_and_sea  
 SSA_LAT=25.7816  
 SSA_LON=-80.2220  
-
 SSA_AIRCRAFT_RADIUS_MI=10  
 SSA_VESSEL_RADIUS_MI=3  
-
 SSA_POLL_INTERVAL=60  
 SSA_SUPPRESS_MINUTES=15  
 
-### Aircraft (Local)
+Aircraft (Local):
 
 SSA_ADSB_URL=http://127.0.0.1:8080/data/aircraft.json  
 
-### Aircraft (Cloud)
+Aircraft (Cloud):
 
 SSA_MODE=aircraft-cloud  
-SSA_AIRCRAFT_PROVIDER=adsblol        # adsblol | airplaneslive | adsbx_rapidapi  
+SSA_AIRCRAFT_PROVIDER=adsblol        (adsblol | airplaneslive | adsbfi | adsbone | opensky | adsbx_rapidapi)  
 SSA_ADSBLOL_BASE=https://api.adsb.lol  
 SSA_AIRPLANESLIVE_BASE=https://api.airplanes.live  
-ADSBX_API_KEY=your_rapidapi_key       # only for adsbx_rapidapi  
+SSA_ADSBFI_BASE=https://opendata.adsb.fi/api  
+SSA_ADSBONE_BASE=https://api.adsb.one  
+SSA_OPENSKY_BASE=https://opensky-network.org/api  
+ADSBX_API_KEY=your_rapidapi_key       (only for adsbx_rapidapi)  
 
-### Vessels (Local)
+Vessels (Local):
 
 SSA_AIS_URL=http://127.0.0.1:8181/ais.json  
 
-### Vessels (Cloud)
+Vessels (Cloud):
 
 SSA_MODE=vessels-cloud  
 AISHUB_API_KEY=your_aishub_username  
@@ -334,7 +382,7 @@ AISHUB_API_KEY=your_aishub_username
 
 Sky and Sea Alert is fully compatible with MeshMonitor Auto Responder scripting.
 
-### Commands
+Commands:
 
 !ssa  
 !ssa sky  
@@ -342,7 +390,7 @@ Sky and Sea Alert is fully compatible with MeshMonitor Auto Responder scripting.
 !ssa demo  
 !ssa help  
 
-### Output
+Output:
 
 { "response": "✈️ AAL123 6.1mi 9200ft" }
 
@@ -353,28 +401,30 @@ MeshMonitor handles:
 - Channels
 - Retries
 
-Sky and Sea Alert **never transmits on radios directly**.
+Sky and Sea Alert never transmits on radios directly.
 
 ---
 
-## Design Goals (v2.x)
+## Not Directly Supported (Documented Only)
 
-- Local-first sensing
-- Honest cost model
-- Community-aligned architecture
-- MeshMonitor-first integration
-- Secure remote access
-- Long-term sustainability
+The following ecosystems exist but are not directly integrated due to licensing, lack of stable public REST API, or commercial restrictions:
 
----
+- ADSBHub
+- adsb.exposed
+- Fly Italy ADSB
+- HPRadar
+- FlightAware
+- Flightradar24
+- Plane Finder
+- AirNav Radar
+- Planespotters.net (not real-time ADS-B)
+- Plane Watch (ACARS/data projects)
+- radarvirtuel.com
+- AV Delphi
+- The Air Traffic
 
-## Roadmap
+Sky and Sea Alert does not scrape websites or bypass terms of service.
 
-- Receiver health monitoring
-- Multi-receiver aggregation (ADS-B + AIS)
-- Coverage overlap / redundancy detection
-- Optional persistent distributed state
-- Enhanced alert classification
 
 ---
 
@@ -382,7 +432,7 @@ Sky and Sea Alert **never transmits on radios directly**.
 
 This project is licensed under the MIT License.
 
-See the [LICENSE](LICENSE) file for details.  
+See the LICENSE file for details.  
 Full license text: https://opensource.org/licenses/MIT
 
 ---
@@ -395,10 +445,15 @@ Pull requests are welcome. Open an issue first to discuss ideas or report bugs.
 
 ## Acknowledgments
 
-* MeshMonitor built by [Yeraze](https://github.com/Yeraze)  
-* adsb.lol (cloud ADS-B provider)  
-* airplanes.live (cloud ADS-B provider)  
-* ADSBexchange (paid cloud ADS-B via RapidAPI)  
-* AIS Hub (AIS API: https://www.aishub.net/api)  
+* MeshMonitor built by [Yeraze](https://github.com/Yeraze) 
+* Shout out and inspired by [TheFlightWall](https://github.com/AxisNimble/TheFlightWall_OSS)
+* [ADSB.lol](https://www.adsb.lol)
+* [airplanes.live](https://github.com/airplanes-live)
+* [adsb.fi](https://github.com/adsbfi)
+* [ADSB One](https://github.com/ADSB-One)
+* [ADSBexchange](https://github.com/adsbexchange)
+* [AIS Hub API](https://www.aishub.net/api)
 
 Discover other community-contributed scripts for MeshMonitor: https://meshmonitor.org/user-scripts.html
+
+
