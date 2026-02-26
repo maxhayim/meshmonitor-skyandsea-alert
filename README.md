@@ -1,4 +1,6 @@
-## README.md
+<p align="center">
+  <img src="docs/assets/logo.png" alt="Sky and Sea Alert Logo" width="200"/>
+</p>
 
 <p align="center">
   <a href="https://www.python.org/">
